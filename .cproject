@@ -70,7 +70,7 @@
 					<folderInfo id="0.854816632.496454896." name="/" resourcePath="">
 						<toolChain id="org.eclipse.cdt.build.core.prefbase.toolchain.2082407359" name="No ToolChain" resourceTypeBasedDiscovery="false" superClass="org.eclipse.cdt.build.core.prefbase.toolchain">
 							<targetPlatform id="org.eclipse.cdt.build.core.prefbase.toolchain.2082407359.1469087935" name=""/>
-							<builder buildPath="${workspace_loc:/FelicaPlug}/gcc" id="org.eclipse.cdt.build.core.settings.default.builder.1550608653" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="Gnu Make Builder" superClass="org.eclipse.cdt.build.core.settings.default.builder"/>
+							<builder buildPath="${workspace_loc:/FelicaPlug}/gcc" id="org.eclipse.cdt.build.core.settings.default.builder.1550608653" incrementalBuildTarget="debug" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="Gnu Make Builder" superClass="org.eclipse.cdt.build.core.settings.default.builder"/>
 							<tool id="org.eclipse.cdt.build.core.settings.holder.libs.1174863719" name="holder for library settings" superClass="org.eclipse.cdt.build.core.settings.holder.libs"/>
 							<tool id="org.eclipse.cdt.build.core.settings.holder.1011356290" name="Assembly" superClass="org.eclipse.cdt.build.core.settings.holder">
 								<option id="org.eclipse.cdt.build.core.settings.holder.incpaths.2001094001" name="Include Paths" superClass="org.eclipse.cdt.build.core.settings.holder.incpaths"/>
@@ -108,6 +108,7 @@
 		<configuration configurationName="Default">
 			<resource resourceType="PROJECT" workspacePath="/FelicaPlug"/>
 		</configuration>
+		<configuration configurationName="Debug"/>
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
 	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets">

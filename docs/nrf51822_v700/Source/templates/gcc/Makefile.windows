@@ -1,0 +1,10 @@
+ifeq ($(findstring 86, $(ProgramFiles)), )
+	PROGFILES := C:/Program Files
+else
+	PROGFILES := C:/Program Files (x86)
+endif
+
+GNU_INSTALL_ROOT := C:/Winappli/CodeSourcery
+GNU_VERSION := 4.8.4
+GNU_PREFIX := arm-none-eabi
+

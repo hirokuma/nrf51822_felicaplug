@@ -29,20 +29,18 @@ C_SOURCE_FILES += softdevice_handler.c
 
 
 OUTPUT_FILENAME := out
-#SDK_PATH = ../../../../
-#SDK_PATH = C:/Nordic Semiconductor/nRF51 SDK_v6.0.0.43681/Nordic/nrf51822/
+
 SDK_PATH = C:/NORDIC~1/NRF51S~1.436/Nordic/nrf51822/
-
-
-#Uncomment correct line if you have s110 programmed on the chip.
-DEVICE_VARIANT := xxaa
-
-USE_SOFTDEVICE := S110
 
 CFLAGS := -DDEBUG_NRF_USER -DBLE_STACK_SUPPORT_REQD -DS110
 
 # we do not use heap in this app
 ASMFLAGS := -D__HEAP_SIZE=0
+
+
+
+DEVICE_VARIANT := xxaa
+USE_SOFTDEVICE := S110
 
 # keep every function in separate section. This will allow linker to dump unused functions
 CFLAGS += -ffunction-sections
