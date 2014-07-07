@@ -6,6 +6,10 @@ C_SOURCE_FILES += main.c
 #----------------------------------------------
 #nRF51 SDK
 C_SOURCE_FILES += softdevice_handler.c
+#C_SOURCE_FILES += app_scheduler.c
+C_SOURCE_FILES += app_timer.c
+C_SOURCE_FILES += app_gpiote.c
+C_SOURCE_FILES += app_button.c
 
 #C_SOURCE_FILES += ble_dis.c
 #C_SOURCE_FILES += ble_bas.c
@@ -17,14 +21,11 @@ C_SOURCE_FILES += softdevice_handler.c
 #C_SOURCE_FILES += ble_debug_assert_handler.c
 #C_SOURCE_FILES += ble_error_log.c
 #C_SOURCE_FILES += ble_conn_params.c
-#C_SOURCE_FILES += app_timer.c
 #C_SOURCE_FILES += pstorage.c
 #C_SOURCE_FILES += crc16.c
 #C_SOURCE_FILES += device_manager_peripheral.c
 #C_SOURCE_FILES += app_trace.c
 #C_SOURCE_FILES += simple_uart.c
-#C_SOURCE_FILES += app_gpiote.c
-#C_SOURCE_FILES += app_button.c
 #----------------------------------------------
 
 

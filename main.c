@@ -21,17 +21,37 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "app_timer.h"
+#include "app_gpiote.h"
+#include "app_button.h"
+
 #include "nrf_gpio.h"
 #include "nrf_sdm.h"
 #include "softdevice_handler.h"
 #include "ble_stack_handler_types.h"
-//#include "nrf.h"
 //#include "app_error.h"
 //#include "nrf51_bitfields.h"
 #include "ble.h"
 
 
-#define IS_SRVC_CHANGED_CHARACT_PRESENT     0  /**< Include or not the service_changed characteristic. if not enabled, the server's database cannot be changed for the lifetime of the device*/
+/** Include or not the service_changed characteristic.
+ * if not enabled, the server's database cannot be changed for the lifetime of the device
+ */
+#define IS_SRVC_CHANGED_CHARACT_PRESENT		(0)
+
+/** Value of the RTC1 PRESCALER register. */
+#define APP_TIMER_PRESCALER			(0)
+/** Maximum number of simultaneously created timers. */
+#define APP_TIMER_MAX_TIMERS		(2)
+/** Size of timer operation queues. */
+#define APP_TIMER_OP_QUEUE_SIZE		(4)
+
+/** Maximum number of users of the GPIOTE handler. */
+#define APP_GPIOTE_MAX_USERS				(1)
+
+/** Delay from a GPIOTE event until a button is reported as pushed (in number of timer ticks). */
+#define BUTTON_DETECTION_DELAY				(APP_TIMER_TICKS(50, APP_TIMER_PRESCALER))
+//#define BUTTON_DETECTION_DELAY				(2)
 
 
 #define PIN_LED			(21)
@@ -136,23 +156,39 @@ static void init_softdevice(void)
     // Initialize the SoftDevice handler module.
     SOFTDEVICE_HANDLER_INIT(NRF_CLOCK_LFCLKSRC_RC_250_PPM_4000MS_CALIBRATION, false);
 
-#ifdef S110
     // Enable BLE stack
     ble_enable_params_t ble_enable_params;
     memset(&ble_enable_params, 0, sizeof(ble_enable_params));
     ble_enable_params.gatts_enable_params.service_changed = IS_SRVC_CHANGED_CHARACT_PRESENT;
     err_code = sd_ble_enable(&ble_enable_params);
     APP_ERROR_CHECK(err_code);
-#endif
 
     // Register with the SoftDevice handler module for BLE events.
     err_code = softdevice_ble_evt_handler_set(ble_evt_dispatch);
     APP_ERROR_CHECK(err_code);
 
-    // Register with the SoftDevice handler module for BLE events.
+    // Register with the SoftDevice handler module for System (SOC) events.
     err_code = softdevice_sys_evt_handler_set(sys_evt_dispatch);
     APP_ERROR_CHECK(err_code);
 
+}
+
+
+/**@brief Function for handling button events.
+ *
+ * @param[in]   pin_no   The pin number of the button pressed.
+ */
+static void button_event_handler(uint8_t pin_no, uint8_t button_action)
+{
+	switch (pin_no) {
+	case PIN_RFDET:
+		nrf_gpio_pin_write(PIN_LED, (button_action == APP_BUTTON_PUSH) ? 1 : 0);
+		break;
+
+	default:
+		APP_ERROR_HANDLER(pin_no);
+		break;
+	}
 }
 
 
@@ -164,7 +200,8 @@ static void init_gpio(void)
 	nrf_gpio_pin_write(PIN_LED, LED_OFF);
 
 	//nRFDET
-	nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLUP);
+	//nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLUP);
+	nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLDOWN);	//SW
 
 	//SW
 	nrf_gpio_cfg_output(PIN_SW);
@@ -183,6 +220,20 @@ static void init_gpio(void)
 	//SPICLK
 	nrf_gpio_cfg_output(PIN_SPICLK);
 	nrf_gpio_pin_write(PIN_SPICLK, 0);
+
+	//timer for app_button
+    APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, false);
+
+	//app_button
+	APP_GPIOTE_INIT(APP_GPIOTE_MAX_USERS);
+	// Note: Array must be static because a pointer to it will be saved in the Button handler
+	//       module.
+	static app_button_cfg_t buttons[] = {
+		//{PIN_RFDET, APP_BUTTON_ACTIVE_LOW, NRF_GPIO_PIN_PULLUP, button_event_handler},
+		{PIN_RFDET, APP_BUTTON_ACTIVE_HIGH, NRF_GPIO_PIN_PULLDOWN, button_event_handler},	//SW
+	};
+
+	APP_BUTTON_INIT(buttons, sizeof(buttons) / sizeof(buttons[0]), BUTTON_DETECTION_DELAY, false);
 }
 
 /**
@@ -193,9 +244,10 @@ int main(void)
 	init_softdevice();
 	init_gpio();
 
-    while (true)
-    {
-        nrf_gpio_pin_write(PIN_LED, nrf_gpio_pin_read(PIN_RFDET));
+	app_button_enable();
+
+    while (true) {
+    	;
     }
 }
 /** @} */
