@@ -50,7 +50,7 @@
 #define APP_GPIOTE_MAX_USERS				(1)
 
 /** Delay from a GPIOTE event until a button is reported as pushed (in number of timer ticks). */
-#define BUTTON_DETECTION_DELAY				(APP_TIMER_TICKS(50, APP_TIMER_PRESCALER))
+#define BUTTON_DETECTION_DELAY				(APP_TIMER_TICKS(5, APP_TIMER_PRESCALER))
 //#define BUTTON_DETECTION_DELAY				(2)
 
 
@@ -182,7 +182,7 @@ static void button_event_handler(uint8_t pin_no, uint8_t button_action)
 {
 	switch (pin_no) {
 	case PIN_RFDET:
-		nrf_gpio_pin_write(PIN_LED, (button_action == APP_BUTTON_PUSH) ? 1 : 0);
+		nrf_gpio_pin_write(PIN_LED, (button_action == APP_BUTTON_PUSH) ? LED_ON : LED_OFF);
 		break;
 
 	default:
@@ -200,8 +200,8 @@ static void init_gpio(void)
 	nrf_gpio_pin_write(PIN_LED, LED_OFF);
 
 	//nRFDET
-	//nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLUP);
-	nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLDOWN);	//SW
+	nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLUP);
+	//nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLDOWN);	//SW
 
 	//SW
 	nrf_gpio_cfg_output(PIN_SW);
@@ -229,8 +229,8 @@ static void init_gpio(void)
 	// Note: Array must be static because a pointer to it will be saved in the Button handler
 	//       module.
 	static app_button_cfg_t buttons[] = {
-		//{PIN_RFDET, APP_BUTTON_ACTIVE_LOW, NRF_GPIO_PIN_PULLUP, button_event_handler},
-		{PIN_RFDET, APP_BUTTON_ACTIVE_HIGH, NRF_GPIO_PIN_PULLDOWN, button_event_handler},	//SW
+		{PIN_RFDET, APP_BUTTON_ACTIVE_LOW, NRF_GPIO_PIN_PULLUP, button_event_handler},
+		//{PIN_RFDET, APP_BUTTON_ACTIVE_HIGH, NRF_GPIO_PIN_PULLDOWN, button_event_handler},	//SW
 	};
 
 	APP_BUTTON_INIT(buttons, sizeof(buttons) / sizeof(buttons[0]), BUTTON_DETECTION_DELAY, false);
