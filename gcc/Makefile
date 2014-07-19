@@ -6,7 +6,7 @@ C_SOURCE_FILES += main.c
 #----------------------------------------------
 #nRF51 SDK
 C_SOURCE_FILES += softdevice_handler.c
-#C_SOURCE_FILES += app_scheduler.c
+C_SOURCE_FILES += app_scheduler.c
 C_SOURCE_FILES += app_timer.c
 C_SOURCE_FILES += app_gpiote.c
 C_SOURCE_FILES += app_button.c

@@ -28,6 +28,7 @@
 #include "app_timer.h"
 #include "app_gpiote.h"
 #include "app_button.h"
+#include "app_scheduler.h"
 
 #include "nrf_gpio.h"
 #include "nrf_sdm.h"
@@ -36,6 +37,9 @@
 //#include "app_error.h"
 //#include "nrf51_bitfields.h"
 #include "ble.h"
+
+//SoftDeviceのスケジューラを使うかどうか。コメントアウトで未使用。
+#define USE_SD_SCHEDULER
 
 
 /** Include or not the service_changed characteristic.
@@ -55,6 +59,14 @@
 
 /** Delay from a GPIOTE event until a button is reported as pushed (in number of timer ticks). */
 #define BUTTON_DETECTION_DELAY		(APP_TIMER_TICKS(5, APP_TIMER_PRESCALER))
+
+/** Maximum size of scheduler events.
+ *     Note that scheduler BLE stack events do not contain any data, 
+ *       as the events are being pulled from the stack in the event handler.
+ */
+#define SCHED_MAX_EVENT_DATA_SIZE       sizeof(app_timer_event_t)
+/** Maximum number of events in the scheduler queue. */
+#define SCHED_QUEUE_SIZE			(10)
 
 
 #define PIN_LED			(21)
@@ -148,8 +160,13 @@ static void init_softdevice(void)
 
 	uint32_t err_code;
 
-	// Initialize the SoftDevice handler module.
+	// SoftDeviceの初期化
+	//   32kHz : 内蔵
+#ifdef USE_SD_SCHEDULER
+	SOFTDEVICE_HANDLER_INIT(NRF_CLOCK_LFCLKSRC_RC_250_PPM_4000MS_CALIBRATION, true);
+#else //USE_SD_SCHEDULER
 	SOFTDEVICE_HANDLER_INIT(NRF_CLOCK_LFCLKSRC_RC_250_PPM_4000MS_CALIBRATION, false);
+#endif //USE_SD_SCHEDULER
 
 	// Enable BLE stack
 	ble_enable_params_t ble_enable_params;
@@ -227,18 +244,36 @@ static void init_gpio(void)
 	// app_button設定関連
 	//
 	
-	//タイマ(スケジューラ無し)
+	//タイマ
+#ifdef USE_SD_SCHEDULER
+	APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, true);
+#else //USE_SD_SCHEDULER
 	APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, false);
+#endif //USE_SD_SCHEDULER
 
 	//GPIO Task Event
 	APP_GPIOTE_INIT(APP_GPIOTE_MAX_USERS);
 
-	//app_button(スケジューラ無し)
+	//app_button
 	static app_button_cfg_t buttons[] = {
 		{PIN_RFDET, APP_BUTTON_ACTIVE_LOW, NRF_GPIO_PIN_PULLUP, button_event_handler},
 	};
+#ifdef USE_SD_SCHEDULER
+	APP_BUTTON_INIT(buttons, sizeof(buttons) / sizeof(buttons[0]), BUTTON_DETECTION_DELAY, true);
+#else //USE_SD_SCHEDULER
 	APP_BUTTON_INIT(buttons, sizeof(buttons) / sizeof(buttons[0]), BUTTON_DETECTION_DELAY, false);
+#endif //USE_SD_SCHEDULER
 }
+
+
+#ifdef USE_SD_SCHEDULER
+/**@brief スケジューラの初期化
+ */
+static void init_scheduler(void)
+{
+	APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
+}
+#endif	//USE_SD_SCHEDULER
 
 
 /**
@@ -248,11 +283,17 @@ int main(void)
 {
 	init_softdevice();
 	init_gpio();
+#ifdef USE_SD_SCHEDULER
+	init_scheduler();
+#endif	//USE_SD_SCHEDULER
 
 	app_button_enable();
 
 	while (true) {
-		;
+#ifdef USE_SD_SCHEDULER
+		app_sched_execute();
+		sd_app_evt_wait();
+#endif	//USE_SD_SCHEDULER
 	}
 }
 /** @} */
