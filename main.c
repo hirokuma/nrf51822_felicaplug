@@ -1,22 +1,26 @@
-/* Copyright (c) 2009 Nordic Semiconductor. All Rights Reserved.
- *
- * The information contained herein is property of Nordic Semiconductor ASA.
- * Terms and conditions of usage are described in detail in NORDIC
- * SEMICONDUCTOR STANDARD SOFTWARE LICENSE AGREEMENT.
- *
- * Licensees are granted free, non-transferable use of the information. NO
- * WARRANTY of ANY KIND is provided. This heading must NOT be removed from
- * the file.
- *
+/*
+ * The MIT License (MIT)
+ * 
+ * Copyright (c) 2014 hirokuma
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
-
-/** @file
-* @brief Example template project.
-* @defgroup nrf_templates_example Example Template
-* @{
-* @ingroup nrf_examples_nrf6310
-*
-*/
 
 #include <stdbool.h>
 #include <string.h>
@@ -47,11 +51,10 @@
 #define APP_TIMER_OP_QUEUE_SIZE		(4)
 
 /** Maximum number of users of the GPIOTE handler. */
-#define APP_GPIOTE_MAX_USERS				(1)
+#define APP_GPIOTE_MAX_USERS		(1)
 
 /** Delay from a GPIOTE event until a button is reported as pushed (in number of timer ticks). */
-#define BUTTON_DETECTION_DELAY				(APP_TIMER_TICKS(5, APP_TIMER_PRESCALER))
-//#define BUTTON_DETECTION_DELAY				(2)
+#define BUTTON_DETECTION_DELAY		(APP_TIMER_TICKS(5, APP_TIMER_PRESCALER))
 
 
 #define PIN_LED			(21)
@@ -66,47 +69,39 @@
 #define	PIN_SPICLK		(15)
 
 
-/**@brief Function for error handling, which is called when an error has occurred.
+/**@brief	エラーハンドラ
  *
- * @warning This handler is an example only and does not fit a final product. You need to analyze
- *          how your product is supposed to react in case of error.
- *
- * @param[in] error_code  Error code supplied to the handler.
- * @param[in] line_num    Line number where the handler is called.
- * @param[in] p_file_name Pointer to the file name.
+ * @param[in] error_code	エラーコード
+ * @param[in] line_num		行番号
+ * @param[in] p_file_name	ファイル名
  */
 void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p_file_name)
 {
-    // This call can be used for debug purposes during application development.
-    // @note CAUTION: Activating this code will write the stack to flash on an error.
-    //                This function should NOT be used in a final product.
-    //                It is intended STRICTLY for development/debugging purposes.
-    //                The flash write will happen EVEN if the radio is active, thus interrupting
-    //                any communication.
-    //                Use with care. Uncomment the line below to use.
-    // ble_debug_assert_handler(error_code, line_num, p_file_name);
+	// This call can be used for debug purposes during application development.
+	// @note CAUTION: Activating this code will write the stack to flash on an error.
+	//                This function should NOT be used in a final product.
+	//                It is intended STRICTLY for development/debugging purposes.
+	//                The flash write will happen EVEN if the radio is active, thus interrupting
+	//                any communication.
+	//                Use with care. Uncomment the line below to use.
+	// ble_debug_assert_handler(error_code, line_num, p_file_name);
 
-    // On assert, the system can only recover with a reset.
-    NVIC_SystemReset();
+	// On assert, the system can only recover with a reset.
+	NVIC_SystemReset();
 }
 
 
-/**@brief Callback function for asserts in the SoftDevice.
+/**@brief	SoftDeviceからのassertコールバック関数
  *
- * @details This function will be called in case of an assert in the SoftDevice.
+ * @warning		リセットしない限り正常に戻らない
  *
- * @warning This handler is an example only and does not fit a final product. You need to analyze
- *          how your product is supposed to react in case of Assert.
- * @warning On assert from the SoftDevice, the system can only recover on reset.
- *
- * @param[in]   line_num   Line number of the failing ASSERT call.
- * @param[in]   file_name  File name of the failing ASSERT call.
+ * @param[in]   line_num	行番号
+ * @param[in]   p_file_name	ファイル名
  */
 void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 {
-    app_error_handler(1, line_num, p_file_name);
+	app_error_handler(1, line_num, p_file_name);
 }
-
 
 
 /**@brief Function for dispatching a BLE stack event to all modules with a BLE stack event handler.
@@ -141,42 +136,43 @@ static void sys_evt_dispatch(uint32_t sys_evt)
 
 static void init_softdevice(void)
 {
-	//�O��16MHz xtal�𓮂���
-    NRF_CLOCK->EVENTS_HFCLKSTARTED  = 0;
-    NRF_CLOCK->XTALFREQ = CLOCK_XTALFREQ_XTALFREQ_16MHz;	//16MHz xtal
-    NRF_CLOCK->TASKS_HFCLKSTART = CLOCK_HFCLKRUN_STATUS_Triggered;
-    while (NRF_CLOCK->EVENTS_HFCLKSTARTED == 0)
-    {
-        //Do nothing.
-    }
-    NRF_CLOCK->EVENTS_HFCLKSTARTED = 0;
+	//外部16MHz xtalを動かす
+	NRF_CLOCK->EVENTS_HFCLKSTARTED  = 0;
+	NRF_CLOCK->XTALFREQ = CLOCK_XTALFREQ_XTALFREQ_16MHz;	//16MHz xtal
+	NRF_CLOCK->TASKS_HFCLKSTART = CLOCK_HFCLKRUN_STATUS_Triggered;
+	while (NRF_CLOCK->EVENTS_HFCLKSTARTED == 0)
+	{
+		//Do nothing.
+	}
+	NRF_CLOCK->EVENTS_HFCLKSTARTED = 0;
 
-    uint32_t err_code;
+	uint32_t err_code;
 
-    // Initialize the SoftDevice handler module.
-    SOFTDEVICE_HANDLER_INIT(NRF_CLOCK_LFCLKSRC_RC_250_PPM_4000MS_CALIBRATION, false);
+	// Initialize the SoftDevice handler module.
+	SOFTDEVICE_HANDLER_INIT(NRF_CLOCK_LFCLKSRC_RC_250_PPM_4000MS_CALIBRATION, false);
 
-    // Enable BLE stack
-    ble_enable_params_t ble_enable_params;
-    memset(&ble_enable_params, 0, sizeof(ble_enable_params));
-    ble_enable_params.gatts_enable_params.service_changed = IS_SRVC_CHANGED_CHARACT_PRESENT;
-    err_code = sd_ble_enable(&ble_enable_params);
-    APP_ERROR_CHECK(err_code);
+	// Enable BLE stack
+	ble_enable_params_t ble_enable_params;
+	memset(&ble_enable_params, 0, sizeof(ble_enable_params));
+	ble_enable_params.gatts_enable_params.service_changed = IS_SRVC_CHANGED_CHARACT_PRESENT;
+	err_code = sd_ble_enable(&ble_enable_params);
+	APP_ERROR_CHECK(err_code);
 
-    // Register with the SoftDevice handler module for BLE events.
-    err_code = softdevice_ble_evt_handler_set(ble_evt_dispatch);
-    APP_ERROR_CHECK(err_code);
+	// Register with the SoftDevice handler module for BLE events.
+	err_code = softdevice_ble_evt_handler_set(ble_evt_dispatch);
+	APP_ERROR_CHECK(err_code);
 
-    // Register with the SoftDevice handler module for System (SOC) events.
-    err_code = softdevice_sys_evt_handler_set(sys_evt_dispatch);
-    APP_ERROR_CHECK(err_code);
+	// Register with the SoftDevice handler module for System (SOC) events.
+	err_code = softdevice_sys_evt_handler_set(sys_evt_dispatch);
+	APP_ERROR_CHECK(err_code);
 
 }
 
 
-/**@brief Function for handling button events.
+/**@brief	app_buttonのイベントハンドラ
  *
- * @param[in]   pin_no   The pin number of the button pressed.
+ * @param[in]   pin_no			アクションが発生したピン番号
+ * @param[in]	button_action	APP_BUTTON_XXX
  */
 static void button_event_handler(uint8_t pin_no, uint8_t button_action)
 {
@@ -192,16 +188,22 @@ static void button_event_handler(uint8_t pin_no, uint8_t button_action)
 }
 
 
+/**@brief	GPIO関連の初期化
+ *
+ */
 static void init_gpio(void)
 {
 	//LED
-	//�v���A�b�v
+	//プルアップ
 	nrf_gpio_cfg_output(PIN_LED);
 	nrf_gpio_pin_write(PIN_LED, LED_OFF);
 
+	//
+	//FeliCa Plug
+	//
+
 	//nRFDET
 	nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLUP);
-	//nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLDOWN);	//SW
 
 	//SW
 	nrf_gpio_cfg_output(PIN_SW);
@@ -221,23 +223,26 @@ static void init_gpio(void)
 	nrf_gpio_cfg_output(PIN_SPICLK);
 	nrf_gpio_pin_write(PIN_SPICLK, 0);
 
-	//timer for app_button
-    APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, false);
+	//
+	// app_button設定関連
+	//
+	
+	//タイマ(スケジューラ無し)
+	APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, false);
 
-	//app_button
+	//GPIO Task Event
 	APP_GPIOTE_INIT(APP_GPIOTE_MAX_USERS);
-	// Note: Array must be static because a pointer to it will be saved in the Button handler
-	//       module.
+
+	//app_button(スケジューラ無し)
 	static app_button_cfg_t buttons[] = {
 		{PIN_RFDET, APP_BUTTON_ACTIVE_LOW, NRF_GPIO_PIN_PULLUP, button_event_handler},
-		//{PIN_RFDET, APP_BUTTON_ACTIVE_HIGH, NRF_GPIO_PIN_PULLDOWN, button_event_handler},	//SW
 	};
-
 	APP_BUTTON_INIT(buttons, sizeof(buttons) / sizeof(buttons[0]), BUTTON_DETECTION_DELAY, false);
 }
 
+
 /**
- * @brief Function for application main entry.
+ * @brief	main()
  */
 int main(void)
 {
@@ -246,8 +251,8 @@ int main(void)
 
 	app_button_enable();
 
-    while (true) {
-    	;
-    }
+	while (true) {
+		;
+	}
 }
 /** @} */
