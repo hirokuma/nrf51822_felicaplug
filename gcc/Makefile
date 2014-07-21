@@ -1,7 +1,17 @@
 TARGET_CHIP := NRF51822_QFAA_CA
 BOARD := BOARD_BVMCN5102
 
+#FeliCa Plug
+CFLAGS += -DSPI_MASTER_0_ENABLE
+
+#----------------------------------------------
 C_SOURCE_FILES += main.c
+#----------------------------------------------
+#FeliCa
+C_SOURCE_PATHS += ../felica
+C_SOURCE_FILES += felica_plug.c
+#----------------------------------------------
+#BLE
 
 #----------------------------------------------
 #nRF51 SDK
@@ -10,6 +20,9 @@ C_SOURCE_FILES += app_scheduler.c
 C_SOURCE_FILES += app_timer.c
 C_SOURCE_FILES += app_gpiote.c
 C_SOURCE_FILES += app_button.c
+
+C_SOURCE_PATHS += $(SDK_PATH)Source/spi_master
+C_SOURCE_FILES += spi_master.c
 
 #C_SOURCE_FILES += ble_dis.c
 #C_SOURCE_FILES += ble_bas.c
@@ -33,7 +46,7 @@ OUTPUT_FILENAME := out
 
 SDK_PATH = C:/NORDIC~1/NRF51S~1.436/Nordic/nrf51822/
 
-CFLAGS := -DDEBUG_NRF_USER -DBLE_STACK_SUPPORT_REQD -DS110
+CFLAGS += -DDEBUG_NRF_USER -DBLE_STACK_SUPPORT_REQD -DS110
 
 # we do not use heap in this app
 ASMFLAGS := -D__HEAP_SIZE=0
@@ -44,7 +57,7 @@ DEVICE_VARIANT := xxaa
 USE_SOFTDEVICE := S110
 
 # keep every function in separate section. This will allow linker to dump unused functions
-CFLAGS += -ffunction-sections
+CFLAGS += -ffunction-sections -Wall
 
 # let linker to dump unused sections
 #LDFLAGS := -Wl,--gc-sections

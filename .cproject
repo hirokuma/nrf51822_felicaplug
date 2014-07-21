@@ -90,6 +90,7 @@
 									<listOptionValue builtIn="false" value="&quot;${NORDIC_NRF51}/Include/ble/ble_services&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${NORDIC_NRF51}/Include/ble/softdevice&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${NORDIC_NRF51}/Include/sd_common&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${ProjDirPath}/felica&quot;"/>
 								</option>
 								<inputType id="org.eclipse.cdt.build.core.settings.holder.inType.1912207308" languageId="org.eclipse.cdt.core.gcc" languageName="GNU C" sourceContentType="org.eclipse.cdt.core.cSource,org.eclipse.cdt.core.cHeader" superClass="org.eclipse.cdt.build.core.settings.holder.inType"/>
 							</tool>

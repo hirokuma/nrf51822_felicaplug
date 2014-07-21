@@ -1,18 +1,18 @@
 /*
  * The MIT License (MIT)
- * 
+ *
  * Copyright (c) 2014 hirokuma
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -27,19 +27,16 @@
 
 #include "app_timer.h"
 #include "app_gpiote.h"
-#include "app_button.h"
 #include "app_scheduler.h"
 
 #include "nrf_gpio.h"
 #include "nrf_sdm.h"
 #include "softdevice_handler.h"
 #include "ble_stack_handler_types.h"
-//#include "app_error.h"
-//#include "nrf51_bitfields.h"
 #include "ble.h"
 
-//SoftDeviceのスケジューラを使うかどうか。コメントアウトで未使用。
-#define USE_SD_SCHEDULER
+#include "board_settings.h"
+#include "felica/felica_plug.h"
 
 
 /** Include or not the service_changed characteristic.
@@ -61,7 +58,7 @@
 #define BUTTON_DETECTION_DELAY		(APP_TIMER_TICKS(5, APP_TIMER_PRESCALER))
 
 /** Maximum size of scheduler events.
- *     Note that scheduler BLE stack events do not contain any data, 
+ *     Note that scheduler BLE stack events do not contain any data,
  *       as the events are being pulled from the stack in the event handler.
  */
 #define SCHED_MAX_EVENT_DATA_SIZE       sizeof(app_timer_event_t)
@@ -69,16 +66,14 @@
 #define SCHED_QUEUE_SIZE			(10)
 
 
-#define PIN_LED			(21)
-#define	LED_ON			(0)
-#define	LED_OFF			(1)
+#define GPIOTE_MASK_IRQ				(1 << PIN_IRQ)
+#define GPIOTE_MASK_RFDET			(1 << PIN_RFDET)
 
-#define PIN_RFDET		(8)
-#define PIN_SW			(9)
-#define	PIN_IRQ			(11)
-#define	PIN_SEL			(12)
-#define	PIN_DATA		(13)
-#define	PIN_SPICLK		(15)
+
+static app_gpiote_user_id_t sGpioteUserId;		//< GPIOTE用
+
+
+static void gpiote_event_handler(uint32_t event_pins_low_to_high, uint32_t event_pins_high_to_low);
 
 
 /**@brief	エラーハンドラ
@@ -146,8 +141,30 @@ static void sys_evt_dispatch(uint32_t sys_evt)
 }
 
 
+
+static void gpiote_event_handler(uint32_t event_pins_low_to_high, uint32_t event_pins_high_to_low)
+{
+	//立ち上がり
+	if (event_pins_low_to_high && GPIOTE_MASK_IRQ) {
+		fp_irq_assert();
+	}
+	if (event_pins_low_to_high && GPIOTE_MASK_RFDET) {
+		nrf_gpio_pin_clear(PIN_LED);		//消灯.
+		fp_stop();
+	}
+
+	//立ち下がり
+	if (event_pins_high_to_low && GPIOTE_MASK_RFDET) {
+		nrf_gpio_pin_set(PIN_LED);			//点灯.
+		fp_rfdet_assert();
+	}
+}
+
+
 static void init_softdevice(void)
 {
+	uint32_t err_code;
+
 	//外部16MHz xtalを動かす
 	NRF_CLOCK->EVENTS_HFCLKSTARTED  = 0;
 	NRF_CLOCK->XTALFREQ = CLOCK_XTALFREQ_XTALFREQ_16MHz;	//16MHz xtal
@@ -158,15 +175,9 @@ static void init_softdevice(void)
 	}
 	NRF_CLOCK->EVENTS_HFCLKSTARTED = 0;
 
-	uint32_t err_code;
-
 	// SoftDeviceの初期化
 	//   32kHz : 内蔵
-#ifdef USE_SD_SCHEDULER
 	SOFTDEVICE_HANDLER_INIT(NRF_CLOCK_LFCLKSRC_RC_250_PPM_4000MS_CALIBRATION, true);
-#else //USE_SD_SCHEDULER
-	SOFTDEVICE_HANDLER_INIT(NRF_CLOCK_LFCLKSRC_RC_250_PPM_4000MS_CALIBRATION, false);
-#endif //USE_SD_SCHEDULER
 
 	// Enable BLE stack
 	ble_enable_params_t ble_enable_params;
@@ -183,97 +194,25 @@ static void init_softdevice(void)
 	err_code = softdevice_sys_evt_handler_set(sys_evt_dispatch);
 	APP_ERROR_CHECK(err_code);
 
-}
 
-
-/**@brief	app_buttonのイベントハンドラ
- *
- * @param[in]   pin_no			アクションが発生したピン番号
- * @param[in]	button_action	APP_BUTTON_XXX
- */
-static void button_event_handler(uint8_t pin_no, uint8_t button_action)
-{
-	switch (pin_no) {
-	case PIN_RFDET:
-		nrf_gpio_pin_write(PIN_LED, (button_action == APP_BUTTON_PUSH) ? LED_ON : LED_OFF);
-		break;
-
-	default:
-		APP_ERROR_HANDLER(pin_no);
-		break;
-	}
-}
-
-
-/**@brief	GPIO関連の初期化
- *
- */
-static void init_gpio(void)
-{
-	//LED
-	//プルアップ
+	//LED(pullup)
 	nrf_gpio_cfg_output(PIN_LED);
-	nrf_gpio_pin_write(PIN_LED, LED_OFF);
+	nrf_gpio_pin_clear(PIN_LED);		//消灯.
 
-	//
-	//FeliCa Plug
-	//
-
-	//nRFDET
-	nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLUP);
-
-	//SW
-	nrf_gpio_cfg_output(PIN_SW);
-	nrf_gpio_pin_write(PIN_SW, 0);
-
-	//IRQ
-	nrf_gpio_cfg_input(PIN_IRQ, NRF_GPIO_PIN_PULLDOWN);
-
-	//SEL
-	nrf_gpio_cfg_output(PIN_SEL);
-	nrf_gpio_pin_write(PIN_SEL, 0);
-
-	//DATA
-	nrf_gpio_cfg_input(PIN_DATA, NRF_GPIO_PIN_PULLDOWN);
-
-	//SPICLK
-	nrf_gpio_cfg_output(PIN_SPICLK);
-	nrf_gpio_pin_write(PIN_SPICLK, 0);
-
-	//
-	// app_button設定関連
-	//
-	
 	//タイマ
-#ifdef USE_SD_SCHEDULER
 	APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, true);
-#else //USE_SD_SCHEDULER
-	APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, false);
-#endif //USE_SD_SCHEDULER
 
 	//GPIO Task Event
 	APP_GPIOTE_INIT(APP_GPIOTE_MAX_USERS);
+	err_code = app_gpiote_user_register(&sGpioteUserId,
+										GPIOTE_MASK_IRQ | GPIOTE_MASK_RFDET,	//立ち上がり
+										GPIOTE_MASK_RFDET,						//立ち下がり
+										gpiote_event_handler);
+	APP_ERROR_CHECK(err_code);
 
-	//app_button
-	static app_button_cfg_t buttons[] = {
-		{PIN_RFDET, APP_BUTTON_ACTIVE_LOW, NRF_GPIO_PIN_PULLUP, button_event_handler},
-	};
-#ifdef USE_SD_SCHEDULER
-	APP_BUTTON_INIT(buttons, sizeof(buttons) / sizeof(buttons[0]), BUTTON_DETECTION_DELAY, true);
-#else //USE_SD_SCHEDULER
-	APP_BUTTON_INIT(buttons, sizeof(buttons) / sizeof(buttons[0]), BUTTON_DETECTION_DELAY, false);
-#endif //USE_SD_SCHEDULER
-}
-
-
-#ifdef USE_SD_SCHEDULER
-/**@brief スケジューラの初期化
- */
-static void init_scheduler(void)
-{
+	//スケジューラ
 	APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
 }
-#endif	//USE_SD_SCHEDULER
 
 
 /**
@@ -281,19 +220,18 @@ static void init_scheduler(void)
  */
 int main(void)
 {
-	init_softdevice();
-	init_gpio();
-#ifdef USE_SD_SCHEDULER
-	init_scheduler();
-#endif	//USE_SD_SCHEDULER
+	uint32_t err_code;
 
-	app_button_enable();
+	init_softdevice();
+	fp_init();
+
+	//
+	err_code = app_gpiote_user_enable(sGpioteUserId);
+	APP_ERROR_CHECK(err_code);
 
 	while (true) {
-#ifdef USE_SD_SCHEDULER
 		app_sched_execute();
 		sd_app_evt_wait();
-#endif	//USE_SD_SCHEDULER
 	}
 }
 /** @} */
