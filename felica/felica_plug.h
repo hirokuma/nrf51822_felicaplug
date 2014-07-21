@@ -19,11 +19,10 @@ typedef enum FpStatus {
 /*******************************************************************/
 
 void fp_init(void);
-
 void fp_rfdet_assert(void);
 void fp_irq_assert(void);
 void fp_stop(void);
-
+void fp_event_loop(void);
 FpStatus fp_get_status(void);
 
 #endif /* FELICA_PLUG_H */

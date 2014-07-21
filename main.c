@@ -149,13 +149,13 @@ static void gpiote_event_handler(uint32_t event_pins_low_to_high, uint32_t event
 		fp_irq_assert();
 	}
 	if (event_pins_low_to_high && GPIOTE_MASK_RFDET) {
-		nrf_gpio_pin_clear(PIN_LED);		//消灯.
+		nrf_gpio_pin_set(PIN_LED);				//消灯.
 		fp_stop();
 	}
 
 	//立ち下がり
 	if (event_pins_high_to_low && GPIOTE_MASK_RFDET) {
-		nrf_gpio_pin_set(PIN_LED);			//点灯.
+		nrf_gpio_pin_clear(PIN_LED);			//点灯.
 		fp_rfdet_assert();
 	}
 }
@@ -197,7 +197,7 @@ static void init_softdevice(void)
 
 	//LED(pullup)
 	nrf_gpio_cfg_output(PIN_LED);
-	nrf_gpio_pin_clear(PIN_LED);		//消灯.
+	nrf_gpio_pin_set(PIN_LED);				//消灯.
 
 	//タイマ
 	APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, true);
@@ -232,6 +232,7 @@ int main(void)
 	while (true) {
 		app_sched_execute();
 		sd_app_evt_wait();
+		fp_event_loop();
 	}
 }
 /** @} */

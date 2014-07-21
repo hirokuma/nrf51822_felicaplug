@@ -30,22 +30,28 @@
 /* SEL */
 #define FP_SEL_SET()	{ nrf_gpio_pin_set(PIN_SEL); }
 #define FP_SEL_CLR()	{ nrf_gpio_pin_clear(PIN_SEL); }
-#define FP_SEL_GET()	(nrf_gpio_pin_read(PIN_SEL))
 
 /* 50usec待つ */
 #define FP_RFDET_WAIT()	{ nrf_delay_us(50); }
 
 /* 受信　IN=MISO / OUT=disconnect */
-#define FP_MOSI_HIZ()	{				\
-		NRF_SPI0->CONFIG = (SPI_CONFIG_CPOL_ActiveLow << SPI_CONFIG_CPOL_Pos) | (SPI_CONFIG_CPHA_Trailing << SPI_CONFIG_CPHA_Pos) | (SPI_CONFIG_ORDER_MsbFirst << SPI_CONFIG_ORDER_Pos);	\
+#define FP_SPIDATA_RECV()	{						\
+		nrf_delay_us(1);							\
 		NRF_SPI0->PSELMOSI = SPI_PIN_DISCONNECTED;	\
-		NRF_SPI0->PSELMISO = PIN_DATA;		\
+		NRF_SPI0->PSELMISO = SPI_PIN_DISCONNECTED;	\
+		nrf_delay_us(1);							\
+		FP_SEL_SET();								\
+		NRF_SPI0->CONFIG = (SPI_CONFIG_CPOL_ActiveLow << SPI_CONFIG_CPOL_Pos) | (SPI_CONFIG_CPHA_Trailing << SPI_CONFIG_CPHA_Pos) | (SPI_CONFIG_ORDER_MsbFirst << SPI_CONFIG_ORDER_Pos);	\
+		NRF_SPI0->PSELMISO = PIN_DATA;				\
 	}
 /* 送信　IN=disconnect / OUT=MOSI */
-#define FP_MISO_HIZ()	{				\
-		NRF_SPI0->CONFIG = (SPI_CONFIG_CPOL_ActiveLow << SPI_CONFIG_CPOL_Pos) | (SPI_CONFIG_CPHA_Leading << SPI_CONFIG_CPHA_Pos) | (SPI_CONFIG_ORDER_MsbFirst << SPI_CONFIG_ORDER_Pos);	\
+#define FP_SPIDATA_SEND()	{						\
+		FP_SEL_CLR();								\
+		NRF_SPI0->PSELMOSI = SPI_PIN_DISCONNECTED;	\
 		NRF_SPI0->PSELMISO = SPI_PIN_DISCONNECTED;	\
-		NRF_SPI0->PSELMOSI = PIN_DATA;		\
+		nrf_delay_us(1);							\
+		NRF_SPI0->CONFIG = (SPI_CONFIG_CPOL_ActiveLow << SPI_CONFIG_CPOL_Pos) | (SPI_CONFIG_CPHA_Leading << SPI_CONFIG_CPHA_Pos) | (SPI_CONFIG_ORDER_MsbFirst << SPI_CONFIG_ORDER_Pos);	\
+		NRF_SPI0->PSELMOSI = PIN_DATA;				\
 	}
 
 /* 有線コマンド */
@@ -56,6 +62,12 @@
 /*******************************************************************/
 
 typedef void (*EVENT_FUNC_TYPE)(void);
+
+typedef enum FpEvent {
+	FPEV_NONE,
+	FPEV_SPI_SEND,
+	FPEV_SPI_RECV
+} FpEvent;
 
 /*******************************************************************/
 
@@ -81,10 +93,17 @@ static const uint8_t k_InitVal[] = {
 /*******************************************************************/
 
 static uint8_t	sSpiBuf[SZ_SPIBUF];		//< SPI送受信バッファ
+static uint8_t	*sSpiSendPtr;
+static uint8_t	*sSpiRecvPtr;
+static uint16_t	sSpiSendSize;
+static uint16_t	sSpiRecvSize;
 static FpStatus	sStatus;				//< ステータス
+static FpEvent	sEvent;
 
 /*******************************************************************/
 
+static void evt_spi_send(void);
+static void evt_spi_recv(void);
 static void recv_rwe(void);
 static void recv_wwe(void);
 static void spi_event_handler(spi_master_evt_t spi_master_evt);
@@ -126,11 +145,11 @@ void fp_init(void)
 		PIN_SPICLK,						/**< SCK pin */
 		PIN_DATA,						/**< MISO pin */
 		SPI_PIN_DISCONNECTED,			/**< MOSI pin DISCONNECTED(受信). */
-		PIN_SEL,						/**< Slave select pin. */
+		SPI_PIN_DISCONNECTED,			/**< Slave select pin. */
 		APP_IRQ_PRIORITY_LOW,			/**< Interrupt priority LOW. */
 		SPI_CONFIG_ORDER_MsbFirst,		/**< Bits order MSB. */
 		SPI_CONFIG_CPOL_ActiveLow,		/**< Serial clock polarity ACTIVELOW. */
-		SPI_CONFIG_CPHA_Trailing,		/**< 受信：Trailing  送信：Leading */
+		SPI_CONFIG_CPHA_Leading,		/**< 受信：Trailing  送信：Leading */
 		0								/**< Don't disable all IRQs. */
 	};
 
@@ -141,6 +160,7 @@ void fp_init(void)
 	spi_master_evt_handler_reg(SPI_MASTER_0, spi_event_handler);
 
 	sStatus = FPST_RFDET_WAIT;
+	sEvent = FPEV_NONE;
 }
 
 
@@ -151,16 +171,16 @@ void fp_rfdet_assert(void)
 {
 	if (sStatus == FPST_RFDET_WAIT) {
 		/* 搬送波待ち→FeliCa Plug初期化 */
-
 		FP_SEL_CLR();
 		FP_SW_SET();
 		FP_RFDET_WAIT();
 
 		/* 初期パラメータ転送開始 */
-		FP_MISO_HIZ();
+		FP_SPIDATA_SEND();
 		memcpy(sSpiBuf, k_InitVal, sizeof(k_InitVal));	//constじゃだめなので・・・.
-		uint32_t err_code = spi_master_send_recv(SPI_MASTER_0, sSpiBuf, sizeof(k_InitVal), NULL, 0);
-		APP_ERROR_CHECK(err_code);
+		sSpiSendSize = sizeof(k_InitVal);
+		sSpiSendPtr = sSpiBuf;
+		sEvent = FPEV_SPI_SEND;
 	} else {
 		fp_stop();
 	}
@@ -172,12 +192,15 @@ void fp_rfdet_assert(void)
  */
 void fp_irq_assert(void)
 {
-	FP_SEL_SET();			/* SEL=H */
-	FP_MOSI_HIZ();			/* MOSI→GPIO HiZ */
-
-	/* 2byte読んで、全受信データを計算する */
-	uint32_t err_code = spi_master_send_recv(SPI_MASTER_0, NULL, 0, sSpiBuf, 2);
-	APP_ERROR_CHECK(err_code);
+	if (sStatus == FPST_IRQ_WAIT) {
+		/* 2byte読んで、全受信データを計算する */
+		sSpiRecvSize = 2;
+		sSpiRecvPtr = sSpiBuf;
+		sEvent = FPEV_SPI_RECV;
+	} else {
+		//搬送波未検出になった後でSW=Lにすると、そこでIRQがHiZになるようだ。
+		//そこで反応されても困るので、ここは何もしない。
+	}
 }
 
 
@@ -186,10 +209,31 @@ void fp_irq_assert(void)
  */
 void fp_stop(void)
 {
-	FP_SEL_CLR();
-	FP_SW_CLR();
-
 	sStatus = FPST_RFDET_WAIT;
+	sEvent = FPEV_NONE;
+
+	FP_SEL_CLR();
+	FP_SW_CLR();		//これによりIRQがHiZになるので、応答しないように
+}
+
+
+void fp_event_loop(void)
+{
+	switch (sEvent) {
+	case FPEV_SPI_SEND:
+		evt_spi_send();
+		sEvent = FPEV_NONE;
+		break;
+
+	case FPEV_SPI_RECV:
+		evt_spi_recv();
+		sEvent = FPEV_NONE;
+		break;
+
+	case FPEV_NONE:
+	default:
+		;
+	}
 }
 
 
@@ -202,27 +246,38 @@ FpStatus fp_get_status(void)
  * static関数
  *******************************************************************/
 
+static void evt_spi_send(void)
+{
+	uint32_t err_code = spi_master_send_recv(SPI_MASTER_0, sSpiSendPtr, sSpiSendSize, NULL, 0);
+	APP_ERROR_CHECK(err_code);
+}
+
+static void evt_spi_recv(void)
+{
+	uint32_t err_code = spi_master_send_recv(SPI_MASTER_0, NULL, 0, sSpiRecvPtr, sSpiRecvSize);
+	APP_ERROR_CHECK(err_code);
+}
+
 /**
  * データ受信完了：Read w/o Encryption
  */
 static void recv_rwe(void)
 {
-	uint16_t size;
 	int i;
 	uint8_t num = sSpiBuf[1];	/* ブロック数 */
 
-	FP_SEL_CLR();			/* SEL=L */
-	FP_MISO_HIZ();			/* MOSI→MOSI */
+	FP_SPIDATA_SEND();			/* MOSI→MOSI */
 
-	size = 0;
-	sSpiBuf[size++] = 0x00;		/* ステータスフラグ1 */
-	sSpiBuf[size++] = 0x00;		/* ステータスフラグ2 */
+	sSpiSendSize = 0;
+	sSpiBuf[sSpiSendSize++] = 0x00;		/* ステータスフラグ1 */
+	sSpiBuf[sSpiSendSize++] = 0x00;		/* ステータスフラグ2 */
 	for(i=0; i<16*num; i++) {
-		sSpiBuf[size++] = i;
+		sSpiBuf[sSpiSendSize++] = i;
 	}
-	FP_MISO_HIZ();
-	uint32_t err_code = spi_master_send_recv(SPI_MASTER_0, sSpiBuf, size, NULL, 0);
-	APP_ERROR_CHECK(err_code);
+	FP_SPIDATA_SEND();
+	sSpiSendPtr = sSpiBuf;
+	sStatus = FPST_SPI_SEND;
+	sEvent = FPEV_SPI_SEND;
 }
 
 
@@ -231,17 +286,15 @@ static void recv_rwe(void)
  */
 static void recv_wwe(void)
 {
-	uint16_t size;
+	FP_SPIDATA_SEND();			/* MOSI→MOSI */
 
-	FP_SEL_CLR();			/* SEL=L */
-	FP_MISO_HIZ();			/* MOSI→MOSI */
-
-	size = 2;
+	sSpiSendSize = 2;
 	sSpiBuf[0] = 0x00;
 	sSpiBuf[1] = 0x00;
-	FP_MISO_HIZ();
-	uint32_t err_code = spi_master_send_recv(SPI_MASTER_0, sSpiBuf, size, NULL, 0);
-	APP_ERROR_CHECK(err_code);
+	FP_SPIDATA_SEND();
+	sSpiSendPtr = sSpiBuf;
+	sStatus = FPST_SPI_SEND;
+	sEvent = FPEV_SPI_SEND;
 }
 
 
@@ -251,34 +304,30 @@ static void recv_wwe(void)
  */
 static void spi_event_handler(spi_master_evt_t spi_master_evt)
 {
-	uint32_t err_code;
-
 	switch (spi_master_evt.evt_type) {
 	case SPI_MASTER_EVT_TRANSFER_COMPLETED:
 		switch (sStatus) {
 		case FPST_RFDET_WAIT:	//初期パラメータ転送完了後
 		case FPST_SPI_SEND:		//SPI送信後
-			FP_SEL_SET();				/* SEL=H */
+			FP_SPIDATA_RECV();			/* 受信方向 */
 			sStatus = FPST_IRQ_WAIT;
 			break;
 
 		case FPST_IRQ_WAIT:		//R/Wからの先頭2byte受信後
 			{
-				uint16_t size;
 				if(sSpiBuf[0] == FPCMD_READ_WO_ENC) {
 					/* Read w/o Enc */
-					size = 2 * sSpiBuf[1];
+					sSpiRecvSize = 2 * sSpiBuf[1];
 				} else if(sSpiBuf[0] == FPCMD_WRITE_WO_ENC) {
 					/* Write w/o Enc */
-					size = 2 * sSpiBuf[1] + 16 * sSpiBuf[1];
+					sSpiRecvSize = 2 * sSpiBuf[1] + 16 * sSpiBuf[1];
 				} else {
 					/* ?? */
 				}
 				//残りを受信
-				err_code = spi_master_send_recv(SPI_MASTER_0, NULL, 0, sSpiBuf + 2, size);
-				APP_ERROR_CHECK(err_code);
-
+				sSpiRecvPtr = sSpiBuf + 2;
 				sStatus = FPST_SPI_RECV;
+				sEvent = FPEV_SPI_RECV;
 			}
 			break;
 
@@ -292,7 +341,6 @@ static void spi_event_handler(spi_master_evt_t spi_master_evt)
 			} else {
 				fp_stop();
 			}
-			sStatus = FPST_SPI_SEND;
 			break;
 
 		default:
