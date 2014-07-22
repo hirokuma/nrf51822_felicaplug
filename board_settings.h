@@ -2,8 +2,9 @@
 #define BOARD_SETTINGS_H
 
 #define PIN_LED			(21)
-#define	LED_ON			(0)
-#define	LED_OFF			(1)
+#define PIN_DBGLED		(26)
+#define	LED_ON(pin)		nrf_gpio_pin_clear(pin)
+#define	LED_OFF(pin)	nrf_gpio_pin_set(pin)
 
 #define PIN_RFDET		(8)
 #define PIN_SW			(9)

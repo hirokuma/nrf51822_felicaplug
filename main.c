@@ -138,6 +138,7 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 static void sys_evt_dispatch(uint32_t sys_evt)
 {
 //    pstorage_sys_event_handler(sys_evt);
+	for(;;){}
 }
 
 
@@ -149,13 +150,13 @@ static void gpiote_event_handler(uint32_t event_pins_low_to_high, uint32_t event
 		fp_irq_assert();
 	}
 	if (event_pins_low_to_high && GPIOTE_MASK_RFDET) {
-		nrf_gpio_pin_set(PIN_LED);				//消灯.
+		LED_OFF(PIN_LED);
 		fp_stop();
 	}
 
 	//立ち下がり
 	if (event_pins_high_to_low && GPIOTE_MASK_RFDET) {
-		nrf_gpio_pin_clear(PIN_LED);			//点灯.
+		LED_ON(PIN_LED);
 		fp_rfdet_assert();
 	}
 }
@@ -197,7 +198,7 @@ static void init_softdevice(void)
 
 	//LED(pullup)
 	nrf_gpio_cfg_output(PIN_LED);
-	nrf_gpio_pin_set(PIN_LED);				//消灯.
+	LED_OFF(PIN_LED);
 
 	//タイマ
 	APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_MAX_TIMERS, APP_TIMER_OP_QUEUE_SIZE, true);

@@ -117,6 +117,11 @@ void fp_init(void)
 {
 	uint32_t err_code;
 
+	//デバッグLED(pullup)
+	nrf_gpio_cfg_output(PIN_DBGLED);
+	nrf_gpio_pin_set(PIN_DBGLED);				//消灯.
+
+
 	//nRFDET
 	nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLUP);
 
@@ -304,8 +309,7 @@ static void recv_wwe(void)
  */
 static void spi_event_handler(spi_master_evt_t spi_master_evt)
 {
-	switch (spi_master_evt.evt_type) {
-	case SPI_MASTER_EVT_TRANSFER_COMPLETED:
+	if (spi_master_evt.evt_type == SPI_MASTER_EVT_TRANSFER_COMPLETED) {
 		switch (sStatus) {
 		case FPST_RFDET_WAIT:	//初期パラメータ転送完了後
 		case FPST_SPI_SEND:		//SPI送信後
@@ -314,21 +318,20 @@ static void spi_event_handler(spi_master_evt_t spi_master_evt)
 			break;
 
 		case FPST_IRQ_WAIT:		//R/Wからの先頭2byte受信後
-			{
-				if(sSpiBuf[0] == FPCMD_READ_WO_ENC) {
-					/* Read w/o Enc */
-					sSpiRecvSize = 2 * sSpiBuf[1];
-				} else if(sSpiBuf[0] == FPCMD_WRITE_WO_ENC) {
-					/* Write w/o Enc */
-					sSpiRecvSize = 2 * sSpiBuf[1] + 16 * sSpiBuf[1];
-				} else {
-					/* ?? */
-				}
-				//残りを受信
-				sSpiRecvPtr = sSpiBuf + 2;
-				sStatus = FPST_SPI_RECV;
-				sEvent = FPEV_SPI_RECV;
+			LED_OFF(PIN_DBGLED);
+			if(sSpiBuf[0] == FPCMD_READ_WO_ENC) {
+				/* Read w/o Enc */
+				sSpiRecvSize = 2 * sSpiBuf[1];
+			} else if(sSpiBuf[0] == FPCMD_WRITE_WO_ENC) {
+				/* Write w/o Enc */
+				sSpiRecvSize = 2 * sSpiBuf[1] + 16 * sSpiBuf[1];
+			} else {
+				/* ?? */
 			}
+			//残りを受信
+			sSpiRecvPtr = sSpiBuf + 2;
+			sStatus = FPST_SPI_RECV;
+			sEvent = FPEV_SPI_RECV;
 			break;
 
 		case FPST_SPI_RECV:		//R/Wからの残りデータ受信後
@@ -347,10 +350,18 @@ static void spi_event_handler(spi_master_evt_t spi_master_evt)
 			fp_stop();
 			break;
 		}
-		break;
-
-	default:
-		break;
+	}
+	else if (spi_master_evt.evt_type == SPI_MASTER_EVT_TRANSFER_STARTED) {
+		switch (sStatus) {
+		case FPST_IRQ_WAIT:		//R/Wからの先頭2byte受信後
+			LED_ON(PIN_DBGLED);
+			break;
+		default:
+			break;
+		}
+	}
+	else {
+		//
 	}
 }
 
