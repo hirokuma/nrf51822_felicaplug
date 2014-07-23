@@ -105,7 +105,7 @@ void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p
  * @param[in]   line_num	行番号
  * @param[in]   p_file_name	ファイル名
  */
-void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
+void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name)
 {
 	app_error_handler(1, line_num, p_file_name);
 }
@@ -118,7 +118,7 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
  *
  * @param[in]   p_ble_evt   Bluetooth stack event.
  */
-static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
+static void ble_evt_dispatch(ble_evt_t *p_ble_evt)
 {
 //    ble_bondmngr_on_ble_evt(p_ble_evt);
 //    ble_hrs_on_ble_evt(&m_hrs, p_ble_evt);
@@ -146,16 +146,16 @@ static void sys_evt_dispatch(uint32_t sys_evt)
 static void gpiote_event_handler(uint32_t event_pins_low_to_high, uint32_t event_pins_high_to_low)
 {
 	//立ち上がり
-	if (event_pins_low_to_high && GPIOTE_MASK_IRQ) {
+	if (event_pins_low_to_high & GPIOTE_MASK_IRQ) {
 		fp_irq_assert();
 	}
-	if (event_pins_low_to_high && GPIOTE_MASK_RFDET) {
+	if (event_pins_low_to_high & GPIOTE_MASK_RFDET) {
 		LED_OFF(PIN_LED);
 		fp_stop();
 	}
 
 	//立ち下がり
-	if (event_pins_high_to_low && GPIOTE_MASK_RFDET) {
+	if (event_pins_high_to_low & GPIOTE_MASK_RFDET) {
 		LED_ON(PIN_LED);
 		fp_rfdet_assert();
 	}

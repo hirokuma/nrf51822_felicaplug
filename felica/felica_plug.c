@@ -226,13 +226,13 @@ void fp_event_loop(void)
 {
 	switch (sEvent) {
 	case FPEV_SPI_SEND:
-		evt_spi_send();
 		sEvent = FPEV_NONE;
+		evt_spi_send();
 		break;
 
 	case FPEV_SPI_RECV:
-		evt_spi_recv();
 		sEvent = FPEV_NONE;
+		evt_spi_recv();
 		break;
 
 	case FPEV_NONE:
