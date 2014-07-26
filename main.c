@@ -70,46 +70,14 @@
 #define GPIOTE_MASK_RFDET			(1 << PIN_RFDET)
 
 
-static app_gpiote_user_id_t sGpioteUserId;		//< GPIOTE用
+////////////////////////////////////////////////////
+// private variable
+////////////////////////////////////////////////////
+static app_gpiote_user_id_t	sGpioteUserId;		//< GPIOTE用
 
-
-static void gpiote_event_handler(uint32_t event_pins_low_to_high, uint32_t event_pins_high_to_low);
-
-
-/**@brief	エラーハンドラ
- *
- * @param[in] error_code	エラーコード
- * @param[in] line_num		行番号
- * @param[in] p_file_name	ファイル名
- */
-void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p_file_name)
-{
-	// This call can be used for debug purposes during application development.
-	// @note CAUTION: Activating this code will write the stack to flash on an error.
-	//                This function should NOT be used in a final product.
-	//                It is intended STRICTLY for development/debugging purposes.
-	//                The flash write will happen EVEN if the radio is active, thus interrupting
-	//                any communication.
-	//                Use with care. Uncomment the line below to use.
-	// ble_debug_assert_handler(error_code, line_num, p_file_name);
-
-	// On assert, the system can only recover with a reset.
-	NVIC_SystemReset();
-}
-
-
-/**@brief	SoftDeviceからのassertコールバック関数
- *
- * @warning		リセットしない限り正常に戻らない
- *
- * @param[in]   line_num	行番号
- * @param[in]   p_file_name	ファイル名
- */
-void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name)
-{
-	app_error_handler(1, line_num, p_file_name);
-}
-
+////////////////////////////////////////////////////
+// private method
+////////////////////////////////////////////////////
 
 /**@brief Function for dispatching a BLE stack event to all modules with a BLE stack event handler.
  *
@@ -140,7 +108,6 @@ static void sys_evt_dispatch(uint32_t sys_evt)
 //    pstorage_sys_event_handler(sys_evt);
 	for(;;){}
 }
-
 
 
 static void gpiote_event_handler(uint32_t event_pins_low_to_high, uint32_t event_pins_high_to_low)
@@ -195,6 +162,9 @@ static void init_softdevice(void)
 	err_code = softdevice_sys_evt_handler_set(sys_evt_dispatch);
 	APP_ERROR_CHECK(err_code);
 
+	//デバッグLED(pullup)
+	nrf_gpio_cfg_output(PIN_DBGLED);
+	LED_OFF(PIN_DBGLED);
 
 	//LED(pullup)
 	nrf_gpio_cfg_output(PIN_LED);
@@ -217,6 +187,111 @@ static void init_softdevice(void)
 
 
 /**
+ * Write w/o Encryptionの受信完了コールバック
+ *
+ * @param[in,out]	pBuf		受信データ/送信データ
+ * @param[in]		rsize		受信サイズ
+ * @param[in]		blocks		受信ブロック数
+ * @note	pBufに書き込んだ先頭2バイトをR/Wに返す。
+ *
+ * Write w/o Encコマンド受信(これが最大)
+ * [0] : コマンドコード
+ * [1] : ブロック数
+ * [2～2+2*[1]-1]: ブロックリスト(2*[1])
+ * [2+2*[1]]     : ブロックデータ(16*[1])
+ *
+ * Write w/o Encレスポンス送信
+ * 1 : ステータスフラグ1
+ * 1 : ステータスフラグ2
+ */
+static void fp_write_req(uint8_t *pBuf, uint8_t rsize, uint8_t blocks)
+{
+	if ((blocks == 1) && (pBuf[3] == 0x01)) {
+		//ブロック1への書き込み要求
+		if (pBuf[2 + 2*blocks] & 0x01) {
+			//先頭が奇数なら点灯、偶数なら消灯
+			LED_ON(PIN_DBGLED);
+		}
+		else {
+			LED_OFF(PIN_DBGLED);
+		}
+	}
+
+	//レスポンス
+	pBuf[0] = FP_STATFLAG1_SUCCESS;
+	pBuf[1] = FP_STATFLAG2_SUCCESS;
+}
+
+/**
+ * Read w/o Encryptionの受信完了コールバック
+ *
+ * @param[in,out]	pBuf		受信データ/送信データ
+ * @param[in]		rsize		受信サイズ
+ * @param[in]		blocks		受信ブロック数
+ * @note	pBufに書き込んだ先頭2バイト + FP_TAG_BLOCK * blocksをR/Wに返す。
+ *
+ * Read w/o Encコマンド受信
+ * 1 : コマンドコード
+ * 1 : ブロック数
+ * 3*12 : ブロックリスト(3バイトタイプ)
+ *
+ * Read w/o Encレスポンス送信
+ * 1 : ステータスフラグ1
+ * 1 : ステータスフラグ2
+ * 16*12 : 読み出したブロックデータ
+ */
+static void fp_read_req(uint8_t *pBuf, uint8_t rsize, uint8_t blocks)
+{
+	//レスポンス
+	pBuf[0] = FP_STATFLAG1_SUCCESS;
+	pBuf[1] = FP_STATFLAG2_SUCCESS;
+	int loop;
+	for (loop=0; loop<FP_TAG_BLOCK * blocks; loop++) {
+		pBuf[2 + loop] = (uint8_t)loop;
+	}
+}
+
+
+////////////////////////////////////////////////////
+// public method
+////////////////////////////////////////////////////
+
+/**@brief	エラーハンドラ
+ *
+ * @param[in] error_code	エラーコード
+ * @param[in] line_num		行番号
+ * @param[in] p_file_name	ファイル名
+ */
+void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p_file_name)
+{
+	// This call can be used for debug purposes during application development.
+	// @note CAUTION: Activating this code will write the stack to flash on an error.
+	//                This function should NOT be used in a final product.
+	//                It is intended STRICTLY for development/debugging purposes.
+	//                The flash write will happen EVEN if the radio is active, thus interrupting
+	//                any communication.
+	//                Use with care. Uncomment the line below to use.
+	// ble_debug_assert_handler(error_code, line_num, p_file_name);
+
+	// On assert, the system can only recover with a reset.
+	NVIC_SystemReset();
+}
+
+
+/**@brief	SoftDeviceからのassertコールバック関数(外部から呼ばれる)
+ *
+ * @warning		リセットしない限り正常に戻らない
+ *
+ * @param[in]   line_num	行番号
+ * @param[in]   p_file_name	ファイル名
+ */
+void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name)
+{
+	app_error_handler(1, line_num, p_file_name);
+}
+
+
+/**
  * @brief	main()
  */
 int main(void)
@@ -224,7 +299,7 @@ int main(void)
 	uint32_t err_code;
 
 	init_softdevice();
-	fp_init();
+	fp_init(fp_write_req, fp_read_req);
 
 	//
 	err_code = app_gpiote_user_enable(sGpioteUserId);

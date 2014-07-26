@@ -19,7 +19,31 @@
 
 /*******************************************************************/
 
-#define SZ_SPIBUF		(256)	/* 送受信バッファサイズ */
+/**
+ * 送受信バッファサイズ
+ *  12ブロックはFeliCa Plugの上限
+ *
+ * Read w/o Encコマンド受信
+ * 1 : コマンドコード
+ * 1 : ブロック数
+ * 3*12 : ブロックリスト(3バイトタイプ)
+ *
+ * Read w/o Encレスポンス送信
+ * 1 : ステータスフラグ1
+ * 1 : ステータスフラグ2
+ * 16*12 : 読み出したブロックデータ
+ *
+ * Write w/o Encコマンド受信(これが最大)
+ * 1 : コマンドコード
+ * 1 : ブロック数
+ * 2*12  : ブロックリスト
+ * 16*12 : ブロックデータ
+ *
+ * Write w/o Encレスポンス送信
+ * 1 : ステータスフラグ1
+ * 1 : ステータスフラグ2
+ */
+#define SZ_SPIBUF		(1 + 1 + 3*12 + 16*12)
 
 /*******************************************************************/
 
@@ -55,13 +79,15 @@
 	}
 
 /* 有線コマンド */
-#define FPCMD_READ_WO_ENC		(0x06)		/* Read w/o Encryption */
-#define FPCMD_WRITE_WO_ENC		(0x08)		/* Write w/o Encryption */
+#define FPCMD_READ_WO_ENC		(0x06)		/**< Read w/o Encryption */
+#define FPCMD_WRITE_WO_ENC		(0x08)		/**< Write w/o Encryption */
+
+/* 初期化パラメータ */
+#define FPINIT_SYSCODE_TYPE3	((uint8_t)(0x1a | 0x01))	/**< システムコード : 0x12fc */
+#define FPINIT_SYSCODE_FEEL		((uint8_t)(0x1a | 0x00))	/**< システムコード : 0xfeel */
 
 
 /*******************************************************************/
-
-typedef void (*EVENT_FUNC_TYPE)(void);
 
 typedef enum FpEvent {
 	FPEV_NONE,
@@ -74,8 +100,9 @@ typedef enum FpEvent {
 /* 初期化パラメータ */
 static const uint8_t k_InitVal[] = {
 	/* 各種設定パラメータ */
-	0x03,					/* データ転送設定 : FT転送設定		*/
-							/* システムコード : 0x12FC			*/
+	FPINIT_SYSCODE_FEEL,
+							/* システムコード : 0xfeel			*/
+							/* データ転送設定 : FT転送設定		*/
 
 	/* 最大応答時間パラメータ */
 	0xff, 0xff,				/* Read w/o Enctyption  : 255		*/
@@ -92,6 +119,8 @@ static const uint8_t k_InitVal[] = {
 
 /*******************************************************************/
 
+static FpWriteReq	sWriteReqFunc;
+static FpReadReq	sReadReqFunc;
 static uint8_t	sSpiBuf[SZ_SPIBUF];		//< SPI送受信バッファ
 static uint8_t	*sSpiSendPtr;
 static uint8_t	*sSpiRecvPtr;
@@ -113,14 +142,12 @@ static void spi_event_handler(spi_master_evt_t spi_master_evt);
  * 公開API
  *******************************************************************/
 
-void fp_init(void)
+void fp_init(FpWriteReq writeFunc, FpReadReq readFunc)
 {
 	uint32_t err_code;
 
-	//デバッグLED(pullup)
-	nrf_gpio_cfg_output(PIN_DBGLED);
-	nrf_gpio_pin_set(PIN_DBGLED);				//消灯.
-
+	sWriteReqFunc = writeFunc;
+	sReadReqFunc = readFunc;
 
 	//nRFDET
 	nrf_gpio_cfg_input(PIN_RFDET, NRF_GPIO_PIN_PULLUP);
@@ -268,19 +295,13 @@ static void evt_spi_recv(void)
  */
 static void recv_rwe(void)
 {
-	int i;
-	uint8_t num = sSpiBuf[1];	/* ブロック数 */
-
 	FP_SPIDATA_SEND();			/* MOSI→MOSI */
 
-	sSpiSendSize = 0;
-	sSpiBuf[sSpiSendSize++] = 0x00;		/* ステータスフラグ1 */
-	sSpiBuf[sSpiSendSize++] = 0x00;		/* ステータスフラグ2 */
-	for(i=0; i<16*num; i++) {
-		sSpiBuf[sSpiSendSize++] = i;
-	}
-	FP_SPIDATA_SEND();
+	sSpiSendSize = 2 + FP_TAG_BLOCK * sSpiBuf[1];
 	sSpiSendPtr = sSpiBuf;
+
+	(*sReadReqFunc)(sSpiBuf, sSpiRecvSize, sSpiBuf[1]);
+
 	sStatus = FPST_SPI_SEND;
 	sEvent = FPEV_SPI_SEND;
 }
@@ -294,10 +315,10 @@ static void recv_wwe(void)
 	FP_SPIDATA_SEND();			/* MOSI→MOSI */
 
 	sSpiSendSize = 2;
-	sSpiBuf[0] = 0x00;
-	sSpiBuf[1] = 0x00;
-	FP_SPIDATA_SEND();
 	sSpiSendPtr = sSpiBuf;
+
+	(*sWriteReqFunc)(sSpiBuf, sSpiRecvSize, sSpiBuf[1]);
+
 	sStatus = FPST_SPI_SEND;
 	sEvent = FPEV_SPI_SEND;
 }
@@ -318,7 +339,7 @@ static void spi_event_handler(spi_master_evt_t spi_master_evt)
 			break;
 
 		case FPST_IRQ_WAIT:		//R/Wからの先頭2byte受信後
-			LED_OFF(PIN_DBGLED);
+			//ブロックリストは2バイト固定、という実装
 			if(sSpiBuf[0] == FPCMD_READ_WO_ENC) {
 				/* Read w/o Enc */
 				sSpiRecvSize = 2 * sSpiBuf[1];
@@ -335,6 +356,7 @@ static void spi_event_handler(spi_master_evt_t spi_master_evt)
 			break;
 
 		case FPST_SPI_RECV:		//R/Wからの残りデータ受信後
+			sSpiRecvSize += 2;		//先に読んだ分
 			if(sSpiBuf[0] == FPCMD_READ_WO_ENC) {
 				/* Read w/o Enc */
 				recv_rwe();
@@ -350,18 +372,6 @@ static void spi_event_handler(spi_master_evt_t spi_master_evt)
 			fp_stop();
 			break;
 		}
-	}
-	else if (spi_master_evt.evt_type == SPI_MASTER_EVT_TRANSFER_STARTED) {
-		switch (sStatus) {
-		case FPST_IRQ_WAIT:		//R/Wからの先頭2byte受信後
-			LED_ON(PIN_DBGLED);
-			break;
-		default:
-			break;
-		}
-	}
-	else {
-		//
 	}
 }
 
