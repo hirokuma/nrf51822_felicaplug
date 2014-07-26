@@ -24,14 +24,10 @@ C_SOURCE_FILES += app_button.c
 C_SOURCE_PATHS += $(SDK_PATH)Source/spi_master
 C_SOURCE_FILES += spi_master.c
 
-#C_SOURCE_FILES += ble_dis.c
-#C_SOURCE_FILES += ble_bas.c
-#C_SOURCE_FILES += ble_hrs.c
-
-#C_SOURCE_FILES += ble_srv_common.c
+C_SOURCE_FILES += ble_srv_common.c
+C_SOURCE_FILES += ble_advdata.c
+C_SOURCE_FILES += ble_debug_assert_handler.c
 #C_SOURCE_FILES += ble_sensorsim.c
-#C_SOURCE_FILES += ble_advdata.c
-#C_SOURCE_FILES += ble_debug_assert_handler.c
 #C_SOURCE_FILES += ble_error_log.c
 #C_SOURCE_FILES += ble_conn_params.c
 #C_SOURCE_FILES += pstorage.c

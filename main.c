@@ -32,12 +32,19 @@
 #include "nrf_gpio.h"
 #include "nrf_sdm.h"
 #include "softdevice_handler.h"
+
 #include "ble_stack_handler_types.h"
 #include "ble.h"
+#include "ble_advdata.h"
+
 
 #include "board_settings.h"
 #include "felica/felica_plug.h"
 
+
+////////////////////////////////////////////////////
+// definition
+////////////////////////////////////////////////////
 
 /** Include or not the service_changed characteristic.
  * if not enabled, the server's database cannot be changed for the lifetime of the device
@@ -65,15 +72,39 @@
 /** Maximum number of events in the scheduler queue. */
 #define SCHED_QUEUE_SIZE			(10)
 
-
 #define GPIOTE_MASK_IRQ				(1 << PIN_IRQ)
 #define GPIOTE_MASK_RFDET			(1 << PIN_RFDET)
+
+#define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                 /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
+#define NON_CONNECTABLE_ADV_INTERVAL    MSEC_TO_UNITS(100, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
+#define APP_COMPANY_IDENTIFIER			(0x004c)		/**< Company identifier for Nordic Semiconductor ASA. as per www.bluetooth.org. */
 
 
 ////////////////////////////////////////////////////
 // private variable
 ////////////////////////////////////////////////////
 static app_gpiote_user_id_t	sGpioteUserId;		//< GPIOTE用
+
+static ble_gap_adv_params_t	sAdvParams;		/**< Parameters to be passed to the stack when starting advertising. */
+static ble_advdata_manuf_data_t	sAdvManuData;
+static ble_advdata_t		sAdvData;
+static uint8_t sAdvFlag = BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED;
+static uint8_t sBeaconInfo[] =				/**< Information advertised by the Beacon. */
+{
+	0x02,				//
+	0x15,				//ここから下のLEN
+
+	// iBeacon proximity UUID
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	//major
+	0x00, 0x00,
+	//minor
+	0x00, 0x00,
+	//RSSI
+	0xc5
+};
+
 
 ////////////////////////////////////////////////////
 // private method
@@ -186,6 +217,49 @@ static void init_softdevice(void)
 }
 
 
+////////////////////////////////////////////////////
+// BLE
+////////////////////////////////////////////////////
+
+/**@brief Function for initializing the Advertising functionality.
+ *
+ * @details Encodes the required advertising data and passes it to the stack.
+ *          Also builds a structure to be passed to the stack when starting advertising.
+ */
+static void advertising_init(void)
+{
+    uint32_t        err_code;
+
+    sAdvManuData.company_identifier = APP_COMPANY_IDENTIFIER;
+    sAdvManuData.data.p_data = (uint8_t *)sBeaconInfo;
+    sAdvManuData.data.size   = sizeof(sBeaconInfo);
+
+    // Build and set advertising data.
+    memset(&sAdvData, 0, sizeof(sAdvData));
+
+    sAdvData.name_type               = BLE_ADVDATA_NO_NAME;
+    sAdvData.flags.size              = sizeof(sAdvFlag);
+    sAdvData.flags.p_data            = &sAdvFlag;
+    sAdvData.p_manuf_specific_data   = &sAdvManuData;
+
+    err_code = ble_advdata_set(&sAdvData, NULL);
+    APP_ERROR_CHECK(err_code);
+
+    // Initialize advertising parameters (used when starting advertising).
+    memset(&sAdvParams, 0, sizeof(sAdvParams));
+
+    sAdvParams.type        = BLE_GAP_ADV_TYPE_ADV_NONCONN_IND;
+    sAdvParams.p_peer_addr = NULL;                             // Undirected advertisement.
+    sAdvParams.fp          = BLE_GAP_ADV_FP_ANY;
+    sAdvParams.interval    = NON_CONNECTABLE_ADV_INTERVAL;
+    sAdvParams.timeout     = APP_CFG_NON_CONN_ADV_TIMEOUT;
+}
+
+
+////////////////////////////////////////////////////
+// FeliCa Plug call back
+////////////////////////////////////////////////////
+
 /**
  * Write w/o Encryptionの受信完了コールバック
  *
@@ -206,15 +280,26 @@ static void init_softdevice(void)
  */
 static void fp_write_req(uint8_t *pBuf, uint8_t rsize, uint8_t blocks)
 {
-	if ((blocks == 1) && (pBuf[3] == 0x01)) {
-		//ブロック1への書き込み要求
-		if (pBuf[2 + 2*blocks] & 0x01) {
-			//先頭が奇数なら点灯、偶数なら消灯
-			LED_ON(PIN_DBGLED);
-		}
-		else {
-			LED_OFF(PIN_DBGLED);
-		}
+	uint32_t err_code;
+
+	if ((blocks == 1) && (pBuf[3] == 0x00)) {
+
+		//ブロック0への書き込み要求
+		memcpy(&sBeaconInfo[2], &pBuf[2 + 2*blocks], 16);	//UUID
+		err_code = ble_advdata_set(&sAdvData, NULL);			//再設定
+		APP_ERROR_CHECK(err_code);
+
+		//Advertiting開始
+		err_code = sd_ble_gap_adv_start(&sAdvParams);
+		APP_ERROR_CHECK(err_code);
+
+		LED_ON(PIN_DBGLED);
+	}
+	else {
+		err_code = sd_ble_gap_adv_stop();
+		APP_ERROR_CHECK(err_code);
+
+		LED_OFF(PIN_DBGLED);
 	}
 
 	//レスポンス
@@ -274,7 +359,9 @@ void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p
 	// ble_debug_assert_handler(error_code, line_num, p_file_name);
 
 	// On assert, the system can only recover with a reset.
-	NVIC_SystemReset();
+	//NVIC_SystemReset();
+	LED_ON(PIN_DBGLED);
+	while(1);
 }
 
 
@@ -287,7 +374,7 @@ void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p
  */
 void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name)
 {
-	app_error_handler(1, line_num, p_file_name);
+	app_error_handler(0xDEADBEEF, line_num, p_file_name);
 }
 
 
@@ -300,6 +387,7 @@ int main(void)
 
 	init_softdevice();
 	fp_init(fp_write_req, fp_read_req);
+	//advertising_init();
 
 	//
 	err_code = app_gpiote_user_enable(sGpioteUserId);
