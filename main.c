@@ -137,6 +137,7 @@ static void ble_evt_dispatch(ble_evt_t *p_ble_evt)
 static void sys_evt_dispatch(uint32_t sys_evt)
 {
 //    pstorage_sys_event_handler(sys_evt);
+	LED_ON(PIN_ERRLED);
 	for(;;){}
 }
 
@@ -192,6 +193,10 @@ static void init_softdevice(void)
 	// Register with the SoftDevice handler module for System (SOC) events.
 	err_code = softdevice_sys_evt_handler_set(sys_evt_dispatch);
 	APP_ERROR_CHECK(err_code);
+
+	//エラーLED(pullup)
+	nrf_gpio_cfg_output(PIN_ERRLED);
+	LED_OFF(PIN_ERRLED);
 
 	//デバッグLED(pullup)
 	nrf_gpio_cfg_output(PIN_DBGLED);
@@ -290,14 +295,16 @@ static void fp_write_req(uint8_t *pBuf, uint8_t rsize, uint8_t blocks)
 		APP_ERROR_CHECK(err_code);
 
 		//Advertiting開始
+		sd_ble_gap_adv_stop();
 		err_code = sd_ble_gap_adv_start(&sAdvParams);
 		APP_ERROR_CHECK(err_code);
 
 		LED_ON(PIN_DBGLED);
 	}
 	else {
-		err_code = sd_ble_gap_adv_stop();
-		APP_ERROR_CHECK(err_code);
+		//ここはエラーを見ない
+		sd_ble_gap_adv_stop();
+		//APP_ERROR_CHECK(err_code);
 
 		LED_OFF(PIN_DBGLED);
 	}
@@ -360,7 +367,7 @@ void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p
 
 	// On assert, the system can only recover with a reset.
 	//NVIC_SystemReset();
-	LED_ON(PIN_DBGLED);
+	LED_ON(PIN_ERRLED);
 	while(1);
 }
 
@@ -387,7 +394,7 @@ int main(void)
 
 	init_softdevice();
 	fp_init(fp_write_req, fp_read_req);
-	//advertising_init();
+	advertising_init();
 
 	//
 	err_code = app_gpiote_user_enable(sGpioteUserId);

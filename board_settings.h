@@ -3,6 +3,7 @@
 
 #define PIN_LED			(21)
 #define PIN_DBGLED		(26)
+#define PIN_ERRLED		(5)
 #define	LED_ON(pin)		nrf_gpio_pin_clear(pin)
 #define	LED_OFF(pin)	nrf_gpio_pin_set(pin)
 
