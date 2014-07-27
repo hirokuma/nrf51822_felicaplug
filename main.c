@@ -334,12 +334,18 @@ static void fp_write_req(uint8_t *pBuf, uint8_t rsize, uint8_t blocks)
  */
 static void fp_read_req(uint8_t *pBuf, uint8_t rsize, uint8_t blocks)
 {
-	//レスポンス
-	pBuf[0] = FP_STATFLAG1_SUCCESS;
-	pBuf[1] = FP_STATFLAG2_SUCCESS;
-	int loop;
-	for (loop=0; loop<FP_TAG_BLOCK * blocks; loop++) {
-		pBuf[2 + loop] = (uint8_t)loop;
+	if ((blocks == 1) && (pBuf[3] == 0x00)) {
+		//レスポンス
+		pBuf[0] = FP_STATFLAG1_SUCCESS;
+		pBuf[1] = FP_STATFLAG2_SUCCESS;
+		//UUIDを返す
+		memcpy(&pBuf[2], &sBeaconInfo[2], 16);
+	}
+	else {
+		//レスポンス
+		pBuf[0] = FP_STATFLAG1_ERROR;
+		pBuf[1] = 0x80;
+		memset(&pBuf[2], 0x00, blocks);
 	}
 }
 
